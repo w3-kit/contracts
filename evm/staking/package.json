@@ -1,0 +1,11 @@
+{
+  "name": "staking",
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.6.0"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "dotenv": "^16.6.0",
+    "hardhat": "^2.28.6"
+  }
+}

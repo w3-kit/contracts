@@ -108,6 +108,20 @@ describe("NFT721", function () {
         .to.be.revertedWithCustomError(nft, "InvalidFee")
         .withArgs(invalidFee);
     });
+
+    it("should revert if royalty receiver is zero address with non-zero fee", async function () {
+      await expect(
+        nft.safeMint(alice.address, TOKEN_URI, ethers.ZeroAddress, DEFAULT_FEE),
+      )
+        .to.be.revertedWithCustomError(nft, "InvalidFee")
+        .withArgs(DEFAULT_FEE);
+    });
+
+    it("should allow minting with zero address receiver and zero fee", async function () {
+      await expect(
+        nft.safeMint(alice.address, TOKEN_URI, ethers.ZeroAddress, 0),
+      ).to.not.be.reverted;
+    });
   });
 
   describe("setDefaultRoyalty", function () {

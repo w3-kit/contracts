@@ -24,7 +24,7 @@ npx hardhat test
 ## Deploy
 
 ```bash
-npx hardhat ignition deploy igniton/modules/NFT721Deploy.ts --network sepolia
+npx hardhat ignition deploy ignition/modules/NFT721Deploy.ts --network sepolia
 ```
 
 ## Learn
@@ -34,7 +34,3 @@ See [.learn.md](./.learn.md) for a breakdown of the ERC-721 standard, metadata p
 ## Stack
 
 Solidity | Hardhat | OpenZeppelin | Ethers.js | TypeScript
-
-```
-
-```

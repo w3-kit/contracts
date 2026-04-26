@@ -4,6 +4,7 @@ import * as dotenv from "dotenv";
 dotenv.config();
 
 const isLocalNetwork = !process.env.ALCHEMY_URL;
+
 if (!isLocalNetwork) {
   if (!process.env.PRIVATE_KEY) throw new Error("PRIVATE_KEY not set");
   if (!process.env.ETHERSCAN_API_KEY)
@@ -12,7 +13,7 @@ if (!isLocalNetwork) {
 
 const config: HardhatUserConfig = {
   solidity: {
-    version: "0.8.27",
+    version: "0.8.26",
     settings: {
       evmVersion: "cancun",
       optimizer: {
@@ -20,6 +21,9 @@ const config: HardhatUserConfig = {
         runs: 200,
       },
     },
+  },
+  paths: {
+    sources: "./src",
   },
   networks: {
     ...(isLocalNetwork
@@ -30,9 +34,6 @@ const config: HardhatUserConfig = {
             accounts: [process.env.PRIVATE_KEY!],
           },
         }),
-  },
-  paths: {
-    sources: "./src",
   },
   etherscan: {
     apiKey: process.env.ETHERSCAN_API_KEY,
