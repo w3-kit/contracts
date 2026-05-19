@@ -91,8 +91,11 @@ After deployment, create the pool and start rewards:
 
 ## Testing
 
+Shared Anchor test helpers live in `solana/test-utils`. See [docs/testing-solana.md](../../docs/testing-solana.md) for layout and how to add tests for new programs.
+
 ```bash
-anchor test --validator legacy
+npm ci
+anchor test
 ```
 
 Tests cover:

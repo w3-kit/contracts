@@ -11,45 +11,22 @@ import {
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
+import { PublicKey, Keypair, SystemProgram } from "@solana/web3.js";
 import {
-  PublicKey,
-  Keypair,
-  SystemProgram,
-  LAMPORTS_PER_SOL,
-} from "@solana/web3.js";
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+  setupProvider,
+  fundKeypairs,
+  waitScaledSeconds,
+} from "@w3-kit/solana-test-utils";
+import { findPoolPda, findUserStakePda } from "./helpers/staking";
 
 describe("Staking", () => {
-  const provider = anchor.AnchorProvider.env();
-  anchor.setProvider(provider);
+  const { connection, payer } = setupProvider();
   const program = anchor.workspace.Staking as Program<Staking>;
-  const connection = provider.connection;
-  const payer = (provider.wallet as anchor.Wallet).payer;
 
   const alice = Keypair.generate();
   const bob = Keypair.generate();
 
   // ---- helpers ----
-
-  function getPoolPda(sMint: PublicKey, rMint: PublicKey): [PublicKey, number] {
-    return PublicKey.findProgramAddressSync(
-      [Buffer.from("pool"), sMint.toBuffer(), rMint.toBuffer()],
-      program.programId
-    );
-  }
-
-  function getUserStakePda(
-    pool: PublicKey,
-    user: PublicKey
-  ): [PublicKey, number] {
-    return PublicKey.findProgramAddressSync(
-      [Buffer.from("user_stake"), pool.toBuffer(), user.toBuffer()],
-      program.programId
-    );
-  }
 
   async function createTestMints(): Promise<{
     stakingMint: PublicKey;
@@ -76,15 +53,15 @@ describe("Staking", () => {
     stakingMint: PublicKey,
     rewardMint: PublicKey
   ): Promise<{ poolPda: PublicKey; stakingVault: PublicKey; rewardVault: PublicKey }> {
-    const [poolPda] = getPoolPda(stakingMint, rewardMint);
+    const [pool] = findPoolPda(program.programId, stakingMint, rewardMint);
     const stakingVault = getAssociatedTokenAddressSync(
       stakingMint,
-      poolPda,
+      pool,
       true
     );
     const rewardVault = getAssociatedTokenAddressSync(
       rewardMint,
-      poolPda,
+      pool,
       true
     );
 
@@ -94,7 +71,7 @@ describe("Staking", () => {
         authority: payer.publicKey,
         stakingMint,
         rewardMint,
-        pool: poolPda,
+        pool,
         stakingVault,
         rewardVault,
         systemProgram: SystemProgram.programId,
@@ -103,7 +80,7 @@ describe("Staking", () => {
       })
       .rpc();
 
-    return { poolPda, stakingVault, rewardVault };
+    return { poolPda: pool, stakingVault, rewardVault };
   }
 
   async function setupUser(
@@ -149,7 +126,11 @@ describe("Staking", () => {
     stakingVault: PublicKey,
     userStakingAta: PublicKey
   ) {
-    const [userStakePda] = getUserStakePda(poolPda, user.publicKey);
+    const [userStakePda] = findUserStakePda(
+      program.programId,
+      poolPda,
+      user.publicKey
+    );
     await program.methods
       .stake(amount)
       .accounts({
@@ -206,14 +187,7 @@ describe("Staking", () => {
   // ---- setup ----
 
   before(async () => {
-    const [aliceSig, bobSig] = await Promise.all([
-      connection.requestAirdrop(alice.publicKey, 10 * LAMPORTS_PER_SOL),
-      connection.requestAirdrop(bob.publicKey, 10 * LAMPORTS_PER_SOL),
-    ]);
-    await Promise.all([
-      connection.confirmTransaction(aliceSig),
-      connection.confirmTransaction(bobSig),
-    ]);
+    await fundKeypairs(connection, [alice, bob]);
   });
 
   // ------------------------------------------------------------------
@@ -265,7 +239,7 @@ describe("Staking", () => {
 
     it("rejects same staking and reward mint", async () => {
       const mint = await createMint(connection, payer, payer.publicKey, null, 6);
-      const [samePool] = getPoolPda(mint, mint);
+      const [samePool] = findPoolPda(program.programId, mint, mint);
       const vault = getAssociatedTokenAddressSync(mint, samePool, true);
 
       try {
@@ -326,7 +300,7 @@ describe("Staking", () => {
       const amount = new BN(100_000);
       await stakeTokens(alice, amount, poolPda, stakingVault, aliceAta);
 
-      const [userStakePda] = getUserStakePda(poolPda, alice.publicKey);
+      const [userStakePda] = findUserStakePda(program.programId, poolPda, alice.publicKey);
       const userStake = await fetchUserStake(userStakePda);
       expect(userStake.balance.toNumber()).to.equal(100_000);
     });
@@ -362,7 +336,7 @@ describe("Staking", () => {
       const pool = await fetchPool(poolPda);
       expect(pool.totalStaked.toNumber()).to.equal(300_000);
 
-      const [bobStakePda] = getUserStakePda(poolPda, bob.publicKey);
+      const [bobStakePda] = findUserStakePda(program.programId, poolPda, bob.publicKey);
       const bobStake = await fetchUserStake(bobStakePda);
       expect(bobStake.balance.toNumber()).to.equal(200_000);
     });
@@ -370,7 +344,7 @@ describe("Staking", () => {
     it("accumulates multiple stakes from the same user", async () => {
       await stakeTokens(alice, new BN(50_000), poolPda, stakingVault, aliceAta);
 
-      const [userStakePda] = getUserStakePda(poolPda, alice.publicKey);
+      const [userStakePda] = findUserStakePda(program.programId, poolPda, alice.publicKey);
       const userStake = await fetchUserStake(userStakePda);
       expect(userStake.balance.toNumber()).to.equal(150_000);
 
@@ -403,7 +377,7 @@ describe("Staking", () => {
     });
 
     it("withdraws tokens and updates balances", async () => {
-      const [userStakePda] = getUserStakePda(poolPda, alice.publicKey);
+      const [userStakePda] = findUserStakePda(program.programId, poolPda, alice.publicKey);
 
       await program.methods
         .withdraw(new BN(200_000))
@@ -433,7 +407,7 @@ describe("Staking", () => {
     });
 
     it("reverts on zero amount", async () => {
-      const [userStakePda] = getUserStakePda(poolPda, alice.publicKey);
+      const [userStakePda] = findUserStakePda(program.programId, poolPda, alice.publicKey);
       try {
         await program.methods
           .withdraw(new BN(0))
@@ -454,7 +428,7 @@ describe("Staking", () => {
     });
 
     it("reverts when withdrawing more than staked", async () => {
-      const [userStakePda] = getUserStakePda(poolPda, alice.publicKey);
+      const [userStakePda] = findUserStakePda(program.programId, poolPda, alice.publicKey);
       try {
         await program.methods
           .withdraw(new BN(999_999_999))
@@ -475,7 +449,7 @@ describe("Staking", () => {
     });
 
     it("supports partial withdrawals leaving remaining balance", async () => {
-      const [userStakePda] = getUserStakePda(poolPda, alice.publicKey);
+      const [userStakePda] = findUserStakePda(program.programId, poolPda, alice.publicKey);
 
       await program.methods
         .withdraw(new BN(100_000))
@@ -609,13 +583,13 @@ describe("Staking", () => {
       await fundVaultAndConfigure(rewardMint, rewardVault, poolPda, new BN(1_000_000), new BN(10));
 
       // Wait ~5 seconds (half the period)
-      await sleep(5000);
+      await waitScaledSeconds(5);
 
       // Trigger reward update by staking a tiny amount
       await mintTo(connection, payer, stakingMint, stakingAta, payer, 1);
       await stakeTokens(alice, new BN(1), poolPda, stakingVault, stakingAta);
 
-      const [userStakePda] = getUserStakePda(poolPda, alice.publicKey);
+      const [userStakePda] = findUserStakePda(program.programId, poolPda, alice.publicKey);
       const userStake = await fetchUserStake(userStakePda);
       const earned = userStake.rewardsEarned.toNumber();
 
@@ -636,13 +610,13 @@ describe("Staking", () => {
       await fundVaultAndConfigure(rewardMint, rewardVault, poolPda, new BN(1_000_000), new BN(5));
 
       // Wait for full period + buffer
-      await sleep(7000);
+      await waitScaledSeconds(7);
 
       // Trigger update
       await mintTo(connection, payer, stakingMint, stakingAta, payer, 1);
       await stakeTokens(alice, new BN(1), poolPda, stakingVault, stakingAta);
 
-      const [userStakePda] = getUserStakePda(poolPda, alice.publicKey);
+      const [userStakePda] = findUserStakePda(program.programId, poolPda, alice.publicKey);
       const userStake = await fetchUserStake(userStakePda);
       const earned = userStake.rewardsEarned.toNumber();
 
@@ -679,7 +653,7 @@ describe("Staking", () => {
       await fundVaultAndConfigure(rewardMint, rewardVault, poolPda, new BN(1_000_000), new BN(5));
 
       // Wait for full period
-      await sleep(7000);
+      await waitScaledSeconds(7);
 
       // Trigger updates for both
       await mintTo(connection, payer, stakingMint, aliceAta, payer, 1);
@@ -687,8 +661,8 @@ describe("Staking", () => {
       await mintTo(connection, payer, stakingMint, bobAta, payer, 1);
       await stakeTokens(bob, new BN(1), poolPda, stakingVault, bobAta);
 
-      const [aliceStakePda] = getUserStakePda(poolPda, alice.publicKey);
-      const [bobStakePda] = getUserStakePda(poolPda, bob.publicKey);
+      const [aliceStakePda] = findUserStakePda(program.programId, poolPda, alice.publicKey);
+      const [bobStakePda] = findUserStakePda(program.programId, poolPda, bob.publicKey);
 
       const aliceEarned = (await fetchUserStake(aliceStakePda)).rewardsEarned.toNumber();
       const bobEarned = (await fetchUserStake(bobStakePda)).rewardsEarned.toNumber();
@@ -717,17 +691,17 @@ describe("Staking", () => {
       await fundVaultAndConfigure(rewardMint, rewardVault, poolPda, new BN(1_000_000), new BN(3));
 
       // Wait well past the period end
-      await sleep(5000);
+      await waitScaledSeconds(5);
 
       // Trigger first update
       await mintTo(connection, payer, stakingMint, stakingAta, payer, 1);
       await stakeTokens(alice, new BN(1), poolPda, stakingVault, stakingAta);
 
-      const [userStakePda] = getUserStakePda(poolPda, alice.publicKey);
+      const [userStakePda] = findUserStakePda(program.programId, poolPda, alice.publicKey);
       const earned1 = (await fetchUserStake(userStakePda)).rewardsEarned.toNumber();
 
       // Wait more time
-      await sleep(3000);
+      await waitScaledSeconds(3);
 
       // Trigger second update
       await mintTo(connection, payer, stakingMint, stakingAta, payer, 1);
@@ -750,13 +724,13 @@ describe("Staking", () => {
       await fundVaultAndConfigure(rewardMint, rewardVault, poolPda, new BN(1_000_000), new BN(3));
 
       // Wait for period to pass
-      await sleep(5000);
+      await waitScaledSeconds(5);
 
       // Now stake — should not get retroactive rewards
       const { stakingAta } = await setupUser(alice, stakingMint, rewardMint, 10_000_000);
       await stakeTokens(alice, new BN(100_000), poolPda, stakingVault, stakingAta);
 
-      const [userStakePda] = getUserStakePda(poolPda, alice.publicKey);
+      const [userStakePda] = findUserStakePda(program.programId, poolPda, alice.publicKey);
       const userStake = await fetchUserStake(userStakePda);
 
       expect(userStake.rewardsEarned.toNumber()).to.equal(0);
@@ -799,13 +773,13 @@ describe("Staking", () => {
       );
 
       // Wait for period to finish
-      await sleep(5000);
+      await waitScaledSeconds(5);
     });
 
     it("transfers reward tokens to user", async () => {
       const rewardBefore = await getTokenBalance(aliceRewardAta);
 
-      const [userStakePda] = getUserStakePda(poolPda, alice.publicKey);
+      const [userStakePda] = findUserStakePda(program.programId, poolPda, alice.publicKey);
       await program.methods
         .claimReward()
         .accounts({
@@ -828,7 +802,7 @@ describe("Staking", () => {
     });
 
     it("resets rewards earned to zero after claiming", async () => {
-      const [userStakePda] = getUserStakePda(poolPda, alice.publicKey);
+      const [userStakePda] = findUserStakePda(program.programId, poolPda, alice.publicKey);
       const userStake = await fetchUserStake(userStakePda);
       expect(userStake.rewardsEarned.toNumber()).to.equal(0);
     });
@@ -836,7 +810,7 @@ describe("Staking", () => {
     it("is a no-op when no rewards earned", async () => {
       const rewardBefore = await getTokenBalance(aliceRewardAta);
 
-      const [userStakePda] = getUserStakePda(poolPda, alice.publicKey);
+      const [userStakePda] = findUserStakePda(program.programId, poolPda, alice.publicKey);
       await program.methods
         .claimReward()
         .accounts({
@@ -891,14 +865,14 @@ describe("Staking", () => {
       );
 
       // Wait for period to finish
-      await sleep(5000);
+      await waitScaledSeconds(5);
     });
 
     it("withdraws all staked tokens and claims rewards in one transaction", async () => {
       const stakingBefore = await getTokenBalance(aliceStakingAta);
       const rewardBefore = await getTokenBalance(aliceRewardAta);
 
-      const [userStakePda] = getUserStakePda(poolPda, alice.publicKey);
+      const [userStakePda] = findUserStakePda(program.programId, poolPda, alice.publicKey);
       await program.methods
         .exit()
         .accounts({
@@ -936,7 +910,7 @@ describe("Staking", () => {
     });
 
     it("reverts when nothing is staked", async () => {
-      const [userStakePda] = getUserStakePda(poolPda, alice.publicKey);
+      const [userStakePda] = findUserStakePda(program.programId, poolPda, alice.publicKey);
       try {
         await program.methods
           .exit()
@@ -980,7 +954,7 @@ describe("Staking", () => {
         .rpc();
 
       // Wait for period to end
-      await sleep(4000);
+      await waitScaledSeconds(4);
 
       // Should succeed
       await program.methods

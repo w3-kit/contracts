@@ -21,11 +21,13 @@ Reusable smart contract templates for EVM (Solidity + Foundry) and Solana (Ancho
 - Multisig wallet
 - Subscription/billing
 
-## Solana Programs (Planned)
+## Solana Programs
 
-- SPL token creation
-- Staking program
-- Vesting program
-- Subscription program
+- Staking program (`solana/staking`)
+- SPL token creation (planned)
+- Vesting program (planned)
+- Subscription program (planned)
+
+Anchor integration tests use shared helpers in `solana/test-utils`. See [docs/testing-solana.md](./docs/testing-solana.md) for layout, CI, and how to add tests for a new program.
 
 Every contract includes a .learn.md with explanations and security considerations.
