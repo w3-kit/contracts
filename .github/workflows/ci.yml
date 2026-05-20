@@ -101,11 +101,14 @@ jobs:
       - name: Install Surfpool
         run: cargo install --git https://github.com/txtx/surfpool --locked
 
+      - name: Install test-utils dependencies
+        working-directory: solana/test-utils
+        run: npm ci
+
       - name: Install dependencies
         run: npm ci
 
       - name: Anchor test
         env:
           ANCHOR_TEST_TIME_SCALE: "0.85"
-          NODE_OPTIONS: "--preserve-symlinks"
         run: anchor test
