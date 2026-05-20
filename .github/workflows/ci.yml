@@ -10,13 +10,17 @@ jobs:
   detect:
     runs-on: ubuntu-latest
     outputs:
-      evm-dirs: ${{ steps.find.outputs.dirs }}
+      evm-dirs: ${{ steps.find-evm.outputs.dirs }}
+      solana-dirs: ${{ steps.find-solana.outputs.dirs }}
     steps:
       - uses: actions/checkout@v4
-      - id: find
+      - id: find-evm
         run: |
-          # Find all directories containing either hardhat.config.ts or foundry.toml
           dirs=$(find evm -maxdepth 2 \( -name "hardhat.config.ts" -o -name "hardhat.config.js" -o -name "foundry.toml" \) -exec dirname {} \; | sort -u | jq -R -s -c 'split("\n")[:-1]')
+          echo "dirs=$dirs" >> $GITHUB_OUTPUT
+      - id: find-solana
+        run: |
+          dirs=$(find solana -maxdepth 2 -name Anchor.toml -exec dirname {} \; | sort -u | jq -R -s -c 'split("\n")[:-1]')
           echo "dirs=$dirs" >> $GITHUB_OUTPUT
 
   evm:
@@ -60,3 +64,48 @@ jobs:
       - name: Test (Foundry)
         if: hashFiles(format('{0}/foundry.toml', matrix.dir)) != ''
         run: forge test -vvv
+
+  solana:
+    needs: detect
+    if: needs.detect.outputs.solana-dirs != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dir: ${{ fromJson(needs.detect.outputs.solana-dirs) }}
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ${{ matrix.dir }}/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Solana CLI
+        uses: metaplex-foundation/actions/install-solana@v1
+        with:
+          version: 2.3.0
+
+      - name: Install Anchor
+        run: |
+          cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
+          avm install 1.0.1
+          avm use 1.0.1
+          echo "$HOME/.avm/bin" >> $GITHUB_PATH
+
+      - name: Install Surfpool
+        run: cargo install --git https://github.com/txtx/surfpool --locked
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Anchor test
+        env:
+          ANCHOR_TEST_TIME_SCALE: "0.85"
+          NODE_OPTIONS: "--preserve-symlinks"
+        run: anchor test

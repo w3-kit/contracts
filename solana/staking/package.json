@@ -6,7 +6,8 @@
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1",
     "@solana/web3.js": "^1.95.0",
-    "@solana/spl-token": "^0.4.0"
+    "@solana/spl-token": "^0.4.0",
+    "@w3-kit/solana-test-utils": "file:../test-utils"
   },
   "devDependencies": {
     "chai": "^4.3.4",
