@@ -89,13 +89,13 @@ jobs:
       - name: Install Solana CLI
         uses: metaplex-foundation/actions/install-solana@v1
         with:
-          version: 2.1.0
+          version: 2.3.0
 
       - name: Install Anchor
         run: |
           cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
-          avm install 0.32.1
-          avm use 0.32.1
+          avm install 1.0.1
+          avm use 1.0.1
           echo "$HOME/.avm/bin" >> $GITHUB_PATH
 
       - name: Install dependencies
