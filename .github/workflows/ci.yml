@@ -107,4 +107,5 @@ jobs:
       - name: Anchor test
         env:
           ANCHOR_TEST_TIME_SCALE: "0.85"
+          NODE_OPTIONS: "--preserve-symlinks"
         run: anchor test
