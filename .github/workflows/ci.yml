@@ -13,7 +13,7 @@ jobs:
       evm-dirs: ${{ steps.find-evm.outputs.dirs }}
       solana-dirs: ${{ steps.find-solana.outputs.dirs }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - id: find-evm
         run: |
           dirs=$(find evm -maxdepth 2 \( -name "hardhat.config.ts" -o -name "hardhat.config.js" -o -name "foundry.toml" \) -exec dirname {} \; | sort -u | jq -R -s -c 'split("\n")[:-1]')
@@ -34,7 +34,7 @@ jobs:
       run:
         working-directory: ${{ matrix.dir }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Hardhat path
       - name: Setup Node.js
@@ -76,7 +76,7 @@ jobs:
       run:
         working-directory: ${{ matrix.dir }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-node@v6
         with:
