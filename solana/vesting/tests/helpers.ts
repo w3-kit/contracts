@@ -1,21 +1,26 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { Vesting } from "../target/types/vesting";
+import { BankrunProvider, startAnchor } from "anchor-bankrun";
+import { ProgramTestContext, Clock } from "solana-bankrun";
 import {
-  createMint,
-  createAccount,
-  mintTo,
-  getAccount,
   TOKEN_PROGRAM_ID,
   TOKEN_2022_PROGRAM_ID,
+  MINT_SIZE,
+  ACCOUNT_SIZE,
+  createInitializeMintInstruction,
+  createInitializeAccountInstruction,
+  createMintToInstruction,
 } from "@solana/spl-token";
-import { Keypair, PublicKey } from "@solana/web3.js";
+import {
+  Keypair,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+} from "@solana/web3.js";
 
-export const provider = anchor.AnchorProvider.env();
-anchor.setProvider(provider);
-
-export const program = anchor.workspace
-  .Vesting as Program<Vesting>;
+const IDL = require("../target/idl/vesting.json");
+export const PROGRAM_ID = new PublicKey(IDL.address);
 
 export const TOKEN_PROGRAMS = [
   { name: "Token Program", id: TOKEN_PROGRAM_ID },
@@ -23,6 +28,9 @@ export const TOKEN_PROGRAMS = [
 ];
 
 export interface TestContext {
+  context: ProgramTestContext;
+  provider: BankrunProvider;
+  program: Program<Vesting>;
   authority: Keypair;
   beneficiary: Keypair;
   mint: PublicKey;
@@ -34,60 +42,133 @@ export interface TestContext {
 }
 
 /**
- * Creates a full test context: keypairs, mint, token accounts, and derived PDAs.
+ * Warp the bankrun clock to a specific unix timestamp.
+ */
+export async function warpTo(ctx: ProgramTestContext, unixTimestamp: number) {
+  const clock = await ctx.banksClient.getClock();
+  ctx.setClock(
+    new Clock(
+      clock.slot + 1n,
+      BigInt(unixTimestamp),
+      clock.epoch,
+      clock.leaderScheduleEpoch,
+      BigInt(unixTimestamp)
+    )
+  );
+}
+
+/**
+ * Creates a full test context using bankrun: keypairs, mint, token accounts, and derived PDAs.
  */
 export async function createTestContext(
   tokenProgramId: PublicKey,
-  depositAmount: number = 1_000_000_000
+  depositAmount: number = 1_000_000_000,
+  scheduleId: number = 0
 ): Promise<TestContext> {
+  const context = await startAnchor(".", [], []);
+  const provider = new BankrunProvider(context);
+  anchor.setProvider(provider as unknown as anchor.AnchorProvider);
+
+  const program = new Program<Vesting>(IDL, provider as unknown as anchor.AnchorProvider);
+
   const authority = Keypair.generate();
   const beneficiary = Keypair.generate();
+  const payer = context.payer;
 
-  await airdrop(authority.publicKey, 10);
-  await airdrop(beneficiary.publicKey, 2);
-
-  const mint = await createMint(
-    provider.connection,
-    authority,
-    authority.publicKey,
-    null,
-    6,
-    Keypair.generate(),
-    undefined,
-    tokenProgramId
+  // Fund authority and beneficiary
+  const fundTx = new Transaction().add(
+    SystemProgram.transfer({
+      fromPubkey: payer.publicKey,
+      toPubkey: authority.publicKey,
+      lamports: 10_000_000_000,
+    }),
+    SystemProgram.transfer({
+      fromPubkey: payer.publicKey,
+      toPubkey: beneficiary.publicKey,
+      lamports: 2_000_000_000,
+    })
   );
+  await provider.sendAndConfirm!(fundTx, [payer]);
 
-  const authorityTokenAccount = await createAccount(
-    provider.connection,
-    authority,
-    mint,
-    authority.publicKey,
-    Keypair.generate(),
-    undefined,
-    tokenProgramId
-  );
+  // Create mint via raw instructions
+  const mintKeypair = Keypair.generate();
+  const mint = mintKeypair.publicKey;
+  const mintLamports = 10_000_000; // enough for rent
 
-  const beneficiaryTokenAccount = await createAccount(
-    provider.connection,
-    beneficiary,
-    mint,
-    beneficiary.publicKey,
-    Keypair.generate(),
-    undefined,
-    tokenProgramId
+  const createMintTx = new Transaction().add(
+    SystemProgram.createAccount({
+      fromPubkey: authority.publicKey,
+      newAccountPubkey: mint,
+      space: MINT_SIZE,
+      lamports: mintLamports,
+      programId: tokenProgramId,
+    }),
+    createInitializeMintInstruction(
+      mint,
+      6,
+      authority.publicKey,
+      null,
+      tokenProgramId
+    )
   );
+  await provider.sendAndConfirm!(createMintTx, [authority, mintKeypair]);
 
-  await mintTo(
-    provider.connection,
-    authority,
-    mint,
-    authorityTokenAccount,
-    authority,
-    depositAmount,
-    [],
-    undefined,
-    tokenProgramId
+  // Create authority token account
+  const authorityTokenKeypair = Keypair.generate();
+  const authorityTokenAccount = authorityTokenKeypair.publicKey;
+  const createAuthAtaTx = new Transaction().add(
+    SystemProgram.createAccount({
+      fromPubkey: authority.publicKey,
+      newAccountPubkey: authorityTokenAccount,
+      space: ACCOUNT_SIZE,
+      lamports: mintLamports,
+      programId: tokenProgramId,
+    }),
+    createInitializeAccountInstruction(
+      authorityTokenAccount,
+      mint,
+      authority.publicKey,
+      tokenProgramId
+    )
   );
+  await provider.sendAndConfirm!(createAuthAtaTx, [authority, authorityTokenKeypair]);
+
+  // Create beneficiary token account
+  const beneficiaryTokenKeypair = Keypair.generate();
+  const beneficiaryTokenAccount = beneficiaryTokenKeypair.publicKey;
+  const createBenefAtaTx = new Transaction().add(
+    SystemProgram.createAccount({
+      fromPubkey: beneficiary.publicKey,
+      newAccountPubkey: beneficiaryTokenAccount,
+      space: ACCOUNT_SIZE,
+      lamports: mintLamports,
+      programId: tokenProgramId,
+    }),
+    createInitializeAccountInstruction(
+      beneficiaryTokenAccount,
+      mint,
+      beneficiary.publicKey,
+      tokenProgramId
+    )
+  );
+  await provider.sendAndConfirm!(createBenefAtaTx, [beneficiary, beneficiaryTokenKeypair]);
+
+  // Mint tokens to authority token account
+  const mintToTx = new Transaction().add(
+    createMintToInstruction(
+      mint,
+      authorityTokenAccount,
+      authority.publicKey,
+      depositAmount,
+      [],
+      tokenProgramId
+    )
+  );
+  await provider.sendAndConfirm!(mintToTx, [authority]);
+
+  // Derive PDAs
+  const scheduleIdBuffer = Buffer.alloc(8);
+  scheduleIdBuffer.writeBigUInt64LE(BigInt(scheduleId));
 
   const [vestingSchedule] = PublicKey.findProgramAddressSync(
     [
@@ -95,16 +176,20 @@ export async function createTestContext(
       authority.publicKey.toBuffer(),
       beneficiary.publicKey.toBuffer(),
       mint.toBuffer(),
+      scheduleIdBuffer,
     ],
-    program.programId
+    PROGRAM_ID
   );
 
   const [vault] = PublicKey.findProgramAddressSync(
     [Buffer.from("vault"), vestingSchedule.toBuffer()],
-    program.programId
+    PROGRAM_ID
   );
 
   return {
+    context,
+    provider,
+    program,
     authority,
     beneficiary,
     mint,
@@ -116,27 +201,17 @@ export async function createTestContext(
   };
 }
 
-export async function airdrop(to: PublicKey, sol: number) {
-  const sig = await provider.connection.requestAirdrop(
-    to,
-    sol * anchor.web3.LAMPORTS_PER_SOL
-  );
-  await provider.connection.confirmTransaction(sig);
-}
-
-export function now(): number {
-  return Math.floor(Date.now() / 1000);
-}
-
+/**
+ * Get token balance via bankrun.
+ */
 export async function getTokenBalance(
-  account: PublicKey,
-  tokenProgramId?: PublicKey
+  context: ProgramTestContext,
+  account: PublicKey
 ): Promise<number> {
-  const info = await getAccount(
-    provider.connection,
-    account,
-    undefined,
-    tokenProgramId
-  );
-  return Number(info.amount);
+  const accInfo = await context.banksClient.getAccount(account);
+  if (!accInfo) return 0;
+  // Token account layout: offset 64 = amount (u64 LE)
+  const data = Buffer.from(accInfo.data);
+  const amount = data.readBigUInt64LE(64);
+  return Number(amount);
 }

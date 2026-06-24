@@ -1,11 +1,10 @@
 import * as anchor from "@coral-xyz/anchor";
 import { expect } from "chai";
 import {
-  program,
   TOKEN_PROGRAMS,
   createTestContext,
-  now,
   getTokenBalance,
+  warpTo,
   TestContext,
 } from "./helpers";
 
@@ -17,10 +16,13 @@ describe("deposit", () => {
       beforeEach(async () => {
         ctx = await createTestContext(tokenProgramId);
 
+        await warpTo(ctx.context, 1_700_000_000);
+
         // Initialize the schedule first
-        await program.methods
+        await ctx.program.methods
           .initialize(
-            new anchor.BN(now() + 60),
+            new anchor.BN(0),
+            new anchor.BN(1_700_000_060),
             new anchor.BN(3600),
             new anchor.BN(600),
             true
@@ -40,7 +42,7 @@ describe("deposit", () => {
       it("deposits tokens into the vault", async () => {
         const depositAmount = 500_000_000;
 
-        await program.methods
+        await ctx.program.methods
           .deposit(new anchor.BN(depositAmount))
           .accountsPartial({
             depositor: ctx.authority.publicKey,
@@ -54,11 +56,11 @@ describe("deposit", () => {
           .rpc();
 
         // Verify vault balance
-        const vaultBalance = await getTokenBalance(ctx.vault, tokenProgramId);
+        const vaultBalance = await getTokenBalance(ctx.context, ctx.vault);
         expect(vaultBalance).to.equal(depositAmount);
 
         // Verify state
-        const schedule = await program.account.vestingSchedule.fetch(
+        const schedule = await ctx.program.account.vestingSchedule.fetch(
           ctx.vestingSchedule
         );
         expect(schedule.totalDeposited.toNumber()).to.equal(depositAmount);
@@ -68,7 +70,7 @@ describe("deposit", () => {
         const first = 300_000_000;
         const second = 200_000_000;
 
-        await program.methods
+        await ctx.program.methods
           .deposit(new anchor.BN(first))
           .accountsPartial({
             depositor: ctx.authority.publicKey,
@@ -81,7 +83,7 @@ describe("deposit", () => {
           .signers([ctx.authority])
           .rpc();
 
-        await program.methods
+        await ctx.program.methods
           .deposit(new anchor.BN(second))
           .accountsPartial({
             depositor: ctx.authority.publicKey,
@@ -94,18 +96,18 @@ describe("deposit", () => {
           .signers([ctx.authority])
           .rpc();
 
-        const schedule = await program.account.vestingSchedule.fetch(
+        const schedule = await ctx.program.account.vestingSchedule.fetch(
           ctx.vestingSchedule
         );
         expect(schedule.totalDeposited.toNumber()).to.equal(first + second);
 
-        const vaultBalance = await getTokenBalance(ctx.vault, tokenProgramId);
+        const vaultBalance = await getTokenBalance(ctx.context, ctx.vault);
         expect(vaultBalance).to.equal(first + second);
       });
 
       it("rejects deposit of 0 amount", async () => {
         try {
-          await program.methods
+          await ctx.program.methods
             .deposit(new anchor.BN(0))
             .accountsPartial({
               depositor: ctx.authority.publicKey,

@@ -1,10 +1,9 @@
 import * as anchor from "@coral-xyz/anchor";
 import { expect } from "chai";
 import {
-  program,
   TOKEN_PROGRAMS,
   createTestContext,
-  now,
+  warpTo,
 } from "./helpers";
 
 describe("initialize", () => {
@@ -12,12 +11,16 @@ describe("initialize", () => {
     describe(`[${name}]`, () => {
       it("creates a vesting schedule with valid params", async () => {
         const ctx = await createTestContext(tokenProgramId);
-        const startTime = now() + 60;
+        const startTime = 1_700_000_000 + 60;
         const duration = 3600;
         const cliffDuration = 600;
 
-        await program.methods
+        // Set clock before initialize
+        await warpTo(ctx.context, 1_700_000_000);
+
+        await ctx.program.methods
           .initialize(
+            new anchor.BN(0),
             new anchor.BN(startTime),
             new anchor.BN(duration),
             new anchor.BN(cliffDuration),
@@ -35,7 +38,7 @@ describe("initialize", () => {
           .rpc();
 
         // Verify state
-        const schedule = await program.account.vestingSchedule.fetch(
+        const schedule = await ctx.program.account.vestingSchedule.fetch(
           ctx.vestingSchedule
         );
         expect(schedule.authority.toBase58()).to.equal(
@@ -52,14 +55,18 @@ describe("initialize", () => {
         expect(schedule.releasedAmount.toNumber()).to.equal(0);
         expect(schedule.revocable).to.equal(true);
         expect(schedule.revoked).to.equal(false);
+        expect(schedule.scheduleId.toNumber()).to.equal(0);
       });
 
       it("allows start_time in the past (retroactive vesting)", async () => {
         const ctx = await createTestContext(tokenProgramId);
-        const startTime = now() - 1800;
+        const startTime = 1_700_000_000 - 1800;
 
-        await program.methods
+        await warpTo(ctx.context, 1_700_000_000);
+
+        await ctx.program.methods
           .initialize(
+            new anchor.BN(0),
             new anchor.BN(startTime),
             new anchor.BN(3600),
             new anchor.BN(0),
@@ -76,7 +83,7 @@ describe("initialize", () => {
           .signers([ctx.authority])
           .rpc();
 
-        const schedule = await program.account.vestingSchedule.fetch(
+        const schedule = await ctx.program.account.vestingSchedule.fetch(
           ctx.vestingSchedule
         );
         expect(schedule.startTime.toNumber()).to.equal(startTime);
@@ -87,8 +94,9 @@ describe("initialize", () => {
         const ctx = await createTestContext(tokenProgramId);
 
         try {
-          await program.methods
+          await ctx.program.methods
             .initialize(
+              new anchor.BN(0),
               new anchor.BN(0),
               new anchor.BN(3600),
               new anchor.BN(0),
@@ -114,9 +122,10 @@ describe("initialize", () => {
         const ctx = await createTestContext(tokenProgramId);
 
         try {
-          await program.methods
+          await ctx.program.methods
             .initialize(
-              new anchor.BN(now() + 60),
+              new anchor.BN(0),
+              new anchor.BN(1_700_000_060),
               new anchor.BN(0),
               new anchor.BN(0),
               false
@@ -141,9 +150,10 @@ describe("initialize", () => {
         const ctx = await createTestContext(tokenProgramId);
 
         try {
-          await program.methods
+          await ctx.program.methods
             .initialize(
-              new anchor.BN(now() + 60),
+              new anchor.BN(0),
+              new anchor.BN(1_700_000_060),
               new anchor.BN(3600),
               new anchor.BN(7200),
               false

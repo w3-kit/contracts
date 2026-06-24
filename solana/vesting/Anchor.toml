@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-vesting = "ossKvVnmERA1f2JfoUT3ADg7zBhJa52sg34xUPnh9bi"
+vesting = "EHBdtEnaqTPmQM7sg8pSJD9dofSgH6Q3A6L51KKDS3cL"
 
 [provider]
 cluster = "localnet"
@@ -14,3 +14,5 @@ wallet = "~/.config/solana/id.json"
 
 [scripts]
 test = "npx ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
+
+[hooks]

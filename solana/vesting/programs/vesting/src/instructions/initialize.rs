@@ -1,13 +1,14 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 
-use crate::errors::VestingError;
-use crate::states::VestingSchedule;
+use crate::error::VestingError;
+use crate::state::VestingSchedule;
 
 /// Creates a new vesting schedule.
 /// Equivalent to deploying VestingWallet + VestingWalletCliff in Solidity.
 pub(crate) fn handler(
     ctx: Context<Initialize>,
+    schedule_id: u64,
     start_time: u64,
     duration: u64,
     cliff_duration: u64,
@@ -30,6 +31,7 @@ pub(crate) fn handler(
     schedule.released_amount = 0;
     schedule.revocable = revocable;
     schedule.revoked = false;
+    schedule.schedule_id = schedule_id;
     schedule.bump = ctx.bumps.vesting_schedule;
     schedule.vault_bump = ctx.bumps.vault;
 
@@ -37,6 +39,7 @@ pub(crate) fn handler(
 }
 
 #[derive(Accounts)]
+#[instruction(schedule_id: u64)]
 pub struct Initialize<'info> {
     /// Authority who creates and (optionally) can revoke the schedule
     #[account(mut)]
@@ -54,7 +57,7 @@ pub struct Initialize<'info> {
         init,
         payer = authority,
         space = 8 + VestingSchedule::INIT_SPACE,
-        seeds = [VestingSchedule::VESTING_SEED.as_bytes(), authority.key().as_ref(), beneficiary.key().as_ref(), mint.key().as_ref()],
+        seeds = [VestingSchedule::VESTING_SEED.as_bytes(), authority.key().as_ref(), beneficiary.key().as_ref(), mint.key().as_ref(), &schedule_id.to_le_bytes()],
         bump
     )]
     pub vesting_schedule: Account<'info, VestingSchedule>,

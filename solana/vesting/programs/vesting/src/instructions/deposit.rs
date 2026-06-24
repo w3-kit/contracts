@@ -1,9 +1,9 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self, TokenAccount, TokenInterface, TransferChecked};
 
-use crate::errors::VestingError;
+use crate::error::VestingError;
 use crate::events::TokensDeposited;
-use crate::states::VestingSchedule;
+use crate::state::VestingSchedule;
 
 /// Deposits SPL tokens into the vesting vault.
 /// Equivalent to transferring ERC20 tokens to the VestingWallet contract in Solidity.
@@ -47,7 +47,7 @@ pub struct Deposit<'info> {
     /// The vesting schedule to deposit into
     #[account(
         mut,
-        seeds = [VestingSchedule::VESTING_SEED.as_bytes(), vesting_schedule.authority.as_ref(), vesting_schedule.beneficiary.as_ref(), vesting_schedule.mint.as_ref()],
+        seeds = [VestingSchedule::VESTING_SEED.as_bytes(), vesting_schedule.authority.as_ref(), vesting_schedule.beneficiary.as_ref(), vesting_schedule.mint.as_ref(), &vesting_schedule.schedule_id.to_le_bytes()],
         bump = vesting_schedule.bump
     )]
     pub vesting_schedule: Account<'info, VestingSchedule>,

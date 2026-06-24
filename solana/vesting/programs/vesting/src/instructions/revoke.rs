@@ -1,10 +1,10 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self, TokenAccount, TokenInterface, TransferChecked};
 
-use crate::errors::VestingError;
+use crate::error::VestingError;
 use crate::events::VestingRevoked;
 use crate::instructions::release::compute_vested_amount;
-use crate::states::VestingSchedule;
+use crate::state::VestingSchedule;
 
 /// Revokes the vesting schedule.
 /// Sends already-vested tokens to beneficiary, returns unvested tokens to authority.
@@ -28,12 +28,14 @@ pub(crate) fn handler(ctx: Context<Revoke>) -> Result<()> {
     let auth_key = ctx.accounts.vesting_schedule.authority;
     let benef_key = ctx.accounts.vesting_schedule.beneficiary;
     let mint_key = ctx.accounts.vesting_schedule.mint;
+    let schedule_id_bytes = ctx.accounts.vesting_schedule.schedule_id.to_le_bytes();
     let bump = ctx.accounts.vesting_schedule.bump;
     let signer_seeds: &[&[&[u8]]] = &[&[
         VestingSchedule::VESTING_SEED.as_bytes(),
         auth_key.as_ref(),
         benef_key.as_ref(),
         mint_key.as_ref(),
+        &schedule_id_bytes,
         &[bump],
     ]];
 
@@ -98,7 +100,7 @@ pub struct Revoke<'info> {
     #[account(
         mut,
         has_one = authority,
-        seeds = [VestingSchedule::VESTING_SEED.as_bytes(), vesting_schedule.authority.as_ref(), vesting_schedule.beneficiary.as_ref(), vesting_schedule.mint.as_ref()],
+        seeds = [VestingSchedule::VESTING_SEED.as_bytes(), vesting_schedule.authority.as_ref(), vesting_schedule.beneficiary.as_ref(), vesting_schedule.mint.as_ref(), &vesting_schedule.schedule_id.to_le_bytes()],
         bump = vesting_schedule.bump
     )]
     pub vesting_schedule: Account<'info, VestingSchedule>,

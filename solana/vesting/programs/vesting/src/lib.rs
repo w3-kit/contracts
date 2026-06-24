@@ -1,7 +1,7 @@
-pub mod errors;
+pub mod error;
 pub mod events;
 pub mod instructions;
-pub mod states;
+pub mod state;
 
 use anchor_lang::prelude::*;
 
@@ -14,7 +14,7 @@ pub(crate) use instructions::deposit::__client_accounts_deposit;
 pub(crate) use instructions::release::__client_accounts_release;
 pub(crate) use instructions::revoke::__client_accounts_revoke;
 
-declare_id!("ossKvVnmERA1f2JfoUT3ADg7zBhJa52sg34xUPnh9bi");
+declare_id!("EHBdtEnaqTPmQM7sg8pSJD9dofSgH6Q3A6L51KKDS3cL");
 
 #[program]
 pub mod vesting {
@@ -24,12 +24,13 @@ pub mod vesting {
     /// Equivalent to VestingWallet constructor + VestingWalletCliff constructor in Solidity.
     pub fn initialize(
         ctx: Context<Initialize>,
+        schedule_id: u64,
         start_time: u64,
         duration: u64,
         cliff_duration: u64,
         revocable: bool,
     ) -> Result<()> {
-        instructions::initialize::handler(ctx, start_time, duration, cliff_duration, revocable)
+        instructions::initialize::handler(ctx, schedule_id, start_time, duration, cliff_duration, revocable)
     }
 
     /// Deposits SPL tokens into the vesting vault.

@@ -1,9 +1,9 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self, TokenAccount, TokenInterface, TransferChecked};
 
-use crate::errors::VestingError;
+use crate::error::VestingError;
 use crate::events::TokensReleased;
-use crate::states::VestingSchedule;
+use crate::state::VestingSchedule;
 
 /// Releases vested tokens to the beneficiary.
 /// Equivalent to `release(address token)` in VestingWallet.sol.
@@ -16,6 +16,10 @@ use crate::states::VestingSchedule;
 ///   releasable = vested - released_amount
 pub(crate) fn handler(ctx: Context<Release>) -> Result<()> {
     let schedule = &ctx.accounts.vesting_schedule;
+
+    // Defensive check: cannot release from a revoked schedule
+    require!(!schedule.revoked, VestingError::AlreadyRevoked);
+
     let clock = Clock::get()?;
     let now = clock.unix_timestamp as u64;
 
@@ -27,12 +31,14 @@ pub(crate) fn handler(ctx: Context<Release>) -> Result<()> {
     let authority_key = ctx.accounts.vesting_schedule.authority;
     let beneficiary_key = ctx.accounts.vesting_schedule.beneficiary;
     let mint_key = ctx.accounts.vesting_schedule.mint;
+    let schedule_id_bytes = ctx.accounts.vesting_schedule.schedule_id.to_le_bytes();
     let bump = ctx.accounts.vesting_schedule.bump;
     let signer_seeds: &[&[&[u8]]] = &[&[
         VestingSchedule::VESTING_SEED.as_bytes(),
         authority_key.as_ref(),
         beneficiary_key.as_ref(),
         mint_key.as_ref(),
+        &schedule_id_bytes,
         &[bump],
     ]];
 
@@ -112,15 +118,20 @@ pub fn compute_vested_amount(schedule: &VestingSchedule, now: u64) -> Result<u64
 
 #[derive(Accounts)]
 pub struct Release<'info> {
-    /// The beneficiary claiming vested tokens
+    /// Anyone can crank release (permissionless, like OZ VestingWallet).
     #[account(mut)]
-    pub beneficiary: Signer<'info>,
+    pub payer: Signer<'info>,
+
+    /// Anyone can crank release; tokens always go to the beneficiary.
+    /// Matches OZ VestingWallet.release() semantics (permissionless).
+    /// CHECK: Validated via has_one constraint on vesting_schedule.
+    pub beneficiary: UncheckedAccount<'info>,
 
     /// The vesting schedule
     #[account(
         mut,
         has_one = beneficiary,
-        seeds = [VestingSchedule::VESTING_SEED.as_bytes(), vesting_schedule.authority.as_ref(), vesting_schedule.beneficiary.as_ref(), vesting_schedule.mint.as_ref()],
+        seeds = [VestingSchedule::VESTING_SEED.as_bytes(), vesting_schedule.authority.as_ref(), vesting_schedule.beneficiary.as_ref(), vesting_schedule.mint.as_ref(), &vesting_schedule.schedule_id.to_le_bytes()],
         bump = vesting_schedule.bump
     )]
     pub vesting_schedule: Account<'info, VestingSchedule>,

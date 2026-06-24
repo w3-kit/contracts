@@ -1,11 +1,13 @@
 {
   "name": "vesting-solana",
   "scripts": {
-    "test": "anchor test --validator legacy"
+    "test": "RUST_LOG= npx ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1",
-    "@solana/spl-token": "^0.4.14"
+    "@solana/spl-token": "^0.4.14",
+    "anchor-bankrun": "^0.5.0",
+    "solana-bankrun": "^0.4.0"
   },
   "devDependencies": {
     "@types/bn.js": "^5.1.0",
