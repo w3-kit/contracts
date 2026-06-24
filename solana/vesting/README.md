@@ -67,7 +67,7 @@ anchor build
 ## Test
 
 ```bash
-anchor test
+npm test
 ```
 
 Tests cover both Token Program and Token-2022 across all instructions.
