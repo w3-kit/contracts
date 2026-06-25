@@ -114,14 +114,16 @@ pub struct Revoke<'info> {
     /// Authority's token account to receive unvested tokens back
     #[account(
         mut,
-        constraint = authority_token_account.mint == vesting_schedule.mint
+        constraint = authority_token_account.mint == vesting_schedule.mint,
+        constraint = authority_token_account.owner == vesting_schedule.authority
     )]
     pub authority_token_account: InterfaceAccount<'info, TokenAccount>,
 
     /// Beneficiary's token account to receive any already-vested tokens
     #[account(
         mut,
-        constraint = beneficiary_token_account.mint == vesting_schedule.mint
+        constraint = beneficiary_token_account.mint == vesting_schedule.mint,
+        constraint = beneficiary_token_account.owner == vesting_schedule.beneficiary
     )]
     pub beneficiary_token_account: InterfaceAccount<'info, TokenAccount>,
 

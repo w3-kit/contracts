@@ -351,6 +351,40 @@ describe("release", () => {
           expect(err.error.errorCode.code).to.equal("NothingToRelease");
         }
       });
+      it("rejects release to attacker token account (owner mismatch)", async () => {
+        const startTime = 1_700_000_000;
+        const duration = 100;
+        const ctx = await setupVesting({
+          startTime,
+          duration,
+          depositAmount: 1_000_000,
+        });
+
+        // Warp past end so tokens are fully vested
+        await warpTo(ctx.context, startTime + duration + 1);
+
+        // Attacker tries to redirect release to their own token account
+        // ctx.authorityTokenAccount is owned by authority, NOT beneficiary
+        try {
+          await ctx.program.methods
+            .release()
+            .accountsPartial({
+              payer: ctx.authority.publicKey,
+              beneficiary: ctx.beneficiary.publicKey,
+              vestingSchedule: ctx.vestingSchedule,
+              mint: ctx.mint,
+              beneficiaryTokenAccount: ctx.authorityTokenAccount, // attacker's account!
+              vault: ctx.vault,
+              tokenProgram: tokenProgramId,
+            })
+            .signers([ctx.authority])
+            .rpc();
+          expect.fail("should have thrown");
+        } catch (err: any) {
+          // Constraint violation: owner != beneficiary
+          expect(err.error.errorCode.code).to.equal("InvalidBeneficiaryOwner");
+        }
+      });
     });
   });
 });

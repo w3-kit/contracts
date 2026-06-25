@@ -1,6 +1,7 @@
 {
   "name": "vesting-solana",
   "scripts": {
+    "pretest": "anchor build",
     "test": "RUST_LOG= npx ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
   },
   "dependencies": {

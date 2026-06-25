@@ -145,7 +145,8 @@ pub struct Release<'info> {
     /// Beneficiary's token account to receive released tokens
     #[account(
         mut,
-        constraint = beneficiary_token_account.mint == vesting_schedule.mint
+        constraint = beneficiary_token_account.mint == vesting_schedule.mint,
+        constraint = beneficiary_token_account.owner == vesting_schedule.beneficiary @ VestingError::InvalidBeneficiaryOwner
     )]
     pub beneficiary_token_account: InterfaceAccount<'info, TokenAccount>,
 
